@@ -7,10 +7,10 @@ from awscostexplorer import AWSCostExplorer
 class AWSCostParser:
     """ Defines the AWSCostParer """
 
-    def __init__(self, key=None):
+    def __init__(self, key=None, days=30, granularity='DAILY'):
         """ Initializes the AWSCostParser """
         self._key = key
-        self._ace = AWSCostExplorer()
+        self._ace = AWSCostExplorer(days=days, granularity=granularity)
         self._df = self._get_dataframe()
 
     def _get_data(self):
