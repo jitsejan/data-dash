@@ -1,4 +1,5 @@
 """ awscostparser.py """
+import json
 import pandas as pd
 
 from awscostexplorer import AWSCostExplorer
@@ -51,7 +52,11 @@ class AWSCostParser:
             .set_index('level_0')
 
         column = self.key if self.key else 'account'
-        gdf[column] = gdf['Keys'].apply(lambda x: x[0])
+        gdf[column] = gdf['Keys'].apply(lambda x: x[0].replace(f'{column}$', ''))
+        if not self.key:
+            with open('account_mapping.json') as jfile:
+                account_mapping = json.loads(jfile.read())
+            gdf['account'] = gdf['account'].apply(lambda x: account_mapping[x])
         gdf['resource'] = gdf['Keys'].apply(lambda x: x[1])
         gdf.drop(['Keys'], axis=1, inplace=True)
         return gdf

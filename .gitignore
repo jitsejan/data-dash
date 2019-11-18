@@ -1,1 +1,4 @@
 .vscode/
+*.df
+*.ipynb
+*.json
