@@ -17,10 +17,16 @@ if not os.environ.get('AWS_PROFILE'):
     sys.exit(2)
 
 
-# acp = AWSCostParser(days=365, granularity="MONTHLY")
-# df = acp.df
-# df.to_pickle('byaccount.df')
+# dailyresources =AWSCostParser(days=30, granularity="DAILY")
+# dailyr_df = dailyresources.df
+# dailyr_df.to_pickle('dailyr.df')
+dailyr_df = pd.read_pickle('dailyr.df')
+
+# annualresources =AWSCostParser(days=365, granularity="MONTHLY")
+# annualresources = annualresources.df
+# annualresources.to_pickle('byaccount.df')
 account_df = pd.read_pickle('byaccount.df')
+
 
 key = 'source'
 # acpk = AWSCostParser(key=key, days=30, granularity="DAILY")
@@ -29,11 +35,15 @@ key = 'source'
 tag_df = pd.read_pickle('bysourcetag.df')
 
 colors = {
-    'background': '#fff',
+    'background': '#eee',
     'text': 'rgb(242, 158, 57)',
     'amazon': 'rgb(242, 158, 57)',
     'graphtext': 'rgb(242, 158, 57)',
 }
+preffont = dict(
+    size=12,
+    color=colors['graphtext']
+)
 external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
 
 def generate_table(dataframe, max_rows=10):
@@ -49,6 +59,13 @@ app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
 
 today = datetime.datetime.utcnow().now() 
 yesterday = today - datetime.timedelta(days=1)
+yestermonth = today - datetime.timedelta(days=31)
+
+data_mask = account_df['start'] >= f'{yestermonth.year}-{yestermonth.month}-01'
+print(account_df[data_mask].groupby(['account', 'start'], as_index=False)['amount'].sum().sort_values('amount', ascending=False).head())
+
+
+import sys; sys.exit(2)
 
 # Cost for AWS by account
 adf = account_df.groupby(['start', 'account'], as_index=False)['amount'].sum()
@@ -74,9 +91,37 @@ account_cost.update_layout(
         color=colors['graphtext']
     ),
     paper_bgcolor='rgba(0,0,0,0)',
-    plot_bgcolor='rgba(0,0,0,0)'
+    plot_bgcolor='rgba(0,0,0,0)',
+    font=preffont
 )
-# Cost for AWS by resource
+# Cost for AWS by resource [30 days, daily]
+drdf = dailyr_df.groupby(['start', 'resource'], as_index=False)['amount'].sum()
+daily_resource_cost = go.Figure()
+for resource in drdf['resource'].unique():
+    rsel = drdf[drdf['resource'] == resource]
+    visible = resource in ['AWS Glue', 'AWS Lambda', 'Amazon Simple Storage Service', 'Amazon Redshift']
+    params = {
+        'name': resource,
+        'x': rsel['start'],
+        'y': rsel['amount']
+    }
+    if not visible:
+        params['visible'] = 'legendonly'
+    daily_resource_cost.add_trace(go.Line(**params))
+## Add total line
+total_df = dailyr_df.groupby(['start'], as_index=False)['amount'].sum()
+params = {
+    'name': 'total',
+    'x': total_df['start'],
+    'y': total_df['amount'],
+}
+daily_resource_cost.add_trace(go.Line(**params))
+daily_resource_cost.update_layout(
+    paper_bgcolor='rgba(0,0,0,0)',
+    plot_bgcolor='rgba(0,0,0,0)',
+    font=preffont
+)
+# Cost for AWS by resource [365 days, monthly]
 rdf = account_df.groupby(['start', 'resource'], as_index=False)['amount'].sum()
 resource_cost = go.Figure()
 for resource in rdf['resource'].unique():
@@ -90,6 +135,11 @@ for resource in rdf['resource'].unique():
     if not visible:
         params['visible'] = 'legendonly'
     resource_cost.add_trace(go.Line(**params))
+resource_cost.update_layout(
+    paper_bgcolor='rgba(0,0,0,0)',
+    plot_bgcolor='rgba(0,0,0,0)',
+    font=preffont
+)
 
 # Root, Data Dev & Prod
 data_mask = (account_df['account'].isin(['Data Dev', 'Data Prod', 'Root'])) & (account_df['start'] >= f'{today.year}-{today.month}-01') & (account_df['amount'] > 1)
@@ -103,7 +153,8 @@ data_acc_fig.update_layout(
         title='Amount (USD)',
     ),
     paper_bgcolor='rgba(0,0,0,0)',
-    plot_bgcolor='rgba(0,0,0,0)'
+    plot_bgcolor='rgba(0,0,0,0)',
+    font=preffont
 )
 
 # Yesterday's untagged resources
@@ -114,8 +165,12 @@ fig_ydf = go.Figure(data=[go.Bar(
     y=ydf['amount'],
     text=ydf['amount'],
     textposition='auto',
-    marker_color=colors['amazon'],
 )])
+fig_ydf.update_layout(
+    paper_bgcolor='rgba(0,0,0,0)',
+    plot_bgcolor='rgba(0,0,0,0)',
+    font=preffont
+)
 
 # Top 10 most expensive resources MTD
 merdf = account_df[account_df['start'] >= f'{today.year}-{today.month}-01']\
@@ -133,15 +188,14 @@ fig_merdf = go.Figure(data=[go.Bar(
 fig_merdf.update_layout(
     xaxis=dict(
         title='Amount (USD)',
-        color=colors['graphtext']
     ),
     yaxis=dict(
         title='Resource',
         autorange='reversed',
-        color=colors['graphtext']
     ),
     paper_bgcolor='rgba(0,0,0,0)',
-    plot_bgcolor='rgba(0,0,0,0)'
+    plot_bgcolor='rgba(0,0,0,0)',
+    font=preffont
 )
 
 # Cost by source
@@ -150,107 +204,76 @@ source_cost_fig = px.bar(source_df, x="amount", y="source", color="resource", or
 source_cost_fig.update_layout(
     xaxis=dict(
         title='Amount (USD)',
-        color=colors['graphtext']
     ),
     yaxis=dict(
         title='Source',
         autorange='reversed',
-        color=colors['graphtext']
     ),
     paper_bgcolor='rgba(0,0,0,0)',
     plot_bgcolor='rgba(0,0,0,0)',
-    font=dict(
-        family="Courier New, monospace",
-        size=10,
-        color="#7f7f7f"
-    )
+    font=preffont
 )
 
-app.layout = html.Div(style={'backgroundColor': colors['background']}, children=[
-    html.H1(
-        children='Cost overview',
-        style={
-            'textAlign': 'center',
-            'color': colors['text']
-        }
-    ),
-
-    html.Div(children='Dashboard showing the data for the different accounts.', style={
-        'textAlign': 'center',
-        'color': colors['text'],
-        'backgroundColor': colors['background']
-    }),
-
-    html.Div(
-        [
-            html.H3("Top 10 - Most expensive resources - All accounts total - MTD", style={
-        'textAlign': 'center',
-        'color': colors['text'],
-        'backgroundColor': colors['background']
-    }),
+app.layout = html.Div(children=[
+    html.Div([
+        html.H1(children='AWS cost overview'),
+        html.H2(children='Dashboard showing the data for the different accounts.')
+    ] , className="header"),
+    html.Div([
+        html.Div([
+            html.H3("Top 10 - Most expensive resources - All accounts total - MTD"),
             dcc.Graph(
                 id="fig_merdf",
-                figure=fig_merdf            )
-        ],
-    ),
-    html.Div([
-        html.H3("Costs for data accounts by resource - MTD", style={
-            'textAlign': 'center',
-            'color': colors['text'],
-            'backgroundColor': colors['background']
-        }),
-        dcc.Graph(
-            id="fig_sub",
-            figure=data_acc_fig            )
-    ]),
-    html.Div(
-        [
-            html.H3("Costs of AWS grouped by account", style={
-            'textAlign': 'center',
-            'color': colors['text'],
-            'backgroundColor': colors['background']
-        }),
+                figure=fig_merdf
+            )]
+        ),
+        html.Div([
+            html.H3("Costs for data accounts by resource - MTD"),
+            dcc.Graph(
+                id="fig_sub",
+                figure=data_acc_fig
+            )
+        ]),
+        html.Div([
+            html.H3("Costs of AWS grouped by account"),
             dcc.Graph(
                 id="account_cost",
                 figure=account_cost            )
-        ],
-    ),
-    html.Div(
-        [
-            html.H3("Costs of AWS grouped by resource", style={
-            'textAlign': 'center',
-            'color': colors['text'],
-            'backgroundColor': colors['background']
-        }),
-            dcc.Graph(
-                id="resource_cost",
-                figure=resource_cost            )
-        ],
-    ),
-    html.Div(
-        [
-            html.H3("Yesterdays untagged resources", style={
-        'textAlign': 'center',
-        'color': colors['text'],
-        'backgroundColor': colors['background']
-    }),
+            ]
+        ),
+        html.Div([html.H3("Cost per resource")]),
+        html.Div([
+            html.Div([
+                html.H4("Last year - Monthly"),
+                dcc.Graph(
+                    id="resource_cost",
+                    figure=resource_cost           
+                )], className="six columns",
+            ),
+            html.Div([
+                html.H4("Last 30 days - Daily"),
+                dcc.Graph(
+                    id="daily_resource_cost",
+                    figure=daily_resource_cost
+                )
+            ], className="six columns",
+        )], className="row"),
+        html.Div([
+            html.H3("Yesterdays untagged resources"),
             dcc.Graph(
                 id="fig_ydf",
-                figure=fig_ydf            )
-        ],
-    ),
-    html.Div(
-        [
-            html.H3("Costs by source", style={
-        'textAlign': 'center',
-        'color': colors['text'],
-        'backgroundColor': colors['background']
-    }),
+                figure=fig_ydf
+            )
+        ]),
+        html.Div([
+            html.H3("Costs by source"),
             dcc.Graph(
                 id="source_cost_fig",
-                figure=source_cost_fig            )
-        ],
-    ),
+                figure=source_cost_fig
+            )
+            ]
+        )
+    ] , className="container-wide"),
     # generate_table(df)
 ])
 
