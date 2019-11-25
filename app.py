@@ -33,11 +33,9 @@ dfk = acpk.df
 dfk.to_pickle('bysourcetag.df')
 tag_df = pd.read_pickle('bysourcetag.df')
 
-colors = {
-    'background': '#eee',
-    'text': 'rgb(242, 158, 57)',
-    'graphtext': 'rgb(242, 158, 57)',
-}
+colors = dict(
+    graphtext='rgb(242, 158, 57)'
+)
 preffont = dict(
     size=10,
     color=colors['graphtext']
@@ -70,8 +68,11 @@ month_compare = account_df[data_mask] \
     .sum() \
     .pivot(index='account', values='amount', columns='start')
 month_compare['diff'] = month_compare.iloc[:, 1] - month_compare.iloc[:, 0]
-month_compare.columns = ['Previous Month', 'Current Month', 'Difference'] 
-
+month_compare.columns = ['Previous Month', 'Current Month', 'Difference']
+month_compare['Current Month'] = month_compare['Current Month'].apply('$ {:.2f}'.format)
+month_compare['Previous Month'] = month_compare['Previous Month'].apply('$ {:.2f}'.format)
+month_compare['Difference'] = month_compare['Difference'].apply('$ {:.2f}'.format)
+month_compare.reset_index(inplace=True)
 
 # Cost for AWS by account
 adf = account_df.groupby(['start', 'account'], as_index=False)['amount'].sum()
@@ -134,9 +135,7 @@ for index, resource in enumerate(rdf['resource'].unique()):
     params = {
         'name': resource,
         'x': rsel['start'],
-        'y': rsel['amount'],
-        'fill': 'tonexty' if index == 0 else 'tonexty',
-        'mode': 'lines'
+        'y': rsel['amount']
     }
     if not visible:
         params['visible'] = 'legendonly'
@@ -179,7 +178,8 @@ fig_ydf.update_layout(
 )
 
 # Top 10 most expensive resources MTD
-merdf = account_df[account_df['start'] >= f'{today.year}-{today.month}-01']\
+data_mask = (account_df['start'] >= f'{today.year}-{today.month}-01') & (~account_df['resource'].isin(['Tax']))
+merdf = account_df[data_mask]\
     .groupby(['resource', 'start'], as_index=False)\
     .sum()\
     .nlargest(10, 'amount')
@@ -204,7 +204,8 @@ fig_merdf.update_layout(
 )
 
 # Cost by source
-source_df = tag_df[(tag_df['start'] >= f'{today.year}-{today.month}-01') & (tag_df['source'] != "")].groupby(['source', 'resource'], as_index=False)['amount'].sum().sort_values('source', ascending=False)
+data_mask = (tag_df['start'] >= f'{today.year}-{today.month}-01') & (tag_df['source'] != "")
+source_df = tag_df[data_mask].groupby(['source', 'resource'], as_index=False)['amount'].sum().sort_values('source', ascending=False)
 source_cost_fig = px.bar(source_df, x="amount", y="source", color="resource", orientation='h')
 source_cost_fig.update_layout(
     xaxis=dict(
@@ -218,7 +219,7 @@ source_cost_fig.update_layout(
     plot_bgcolor='rgba(0,0,0,0)',
     font=preffont,
     title={
-        'text': "Plot Title",
+        'text': "Cost per data source - MTD",
         'font': {
             'size': 20
         },
@@ -235,6 +236,16 @@ app.layout = html.Div(children=[
         html.H2(children='Dashboard showing the data for the different accounts.')
     ] , className="header"),
     html.Div([
+        html.Div([
+            html.H3("Cost Data Accounts - MTD"),
+            html.Table(
+                [html.Tr([html.Th(col) for col in month_compare.columns])] +
+
+                [html.Tr([
+                    html.Td(month_compare.iloc[i][col]) for col in month_compare.columns
+                ]) for i in range(len(month_compare))]
+            )
+        ]),
         html.Div([
             html.H3("Top 10 - Most expensive resources - All accounts total - MTD"),
             dcc.Graph(
@@ -253,9 +264,9 @@ app.layout = html.Div(children=[
             html.H3("Costs of AWS grouped by account"),
             dcc.Graph(
                 id="account_cost",
-                figure=account_cost            )
-            ]
-        ),
+                figure=account_cost
+            )
+        ]),
         html.Div([html.H3("Cost per resource")]),
         html.Div([
             html.Div([
