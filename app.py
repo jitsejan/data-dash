@@ -17,31 +17,29 @@ if not os.environ.get('AWS_PROFILE'):
     sys.exit(2)
 
 
-# dailyresources =AWSCostParser(days=30, granularity="DAILY")
-# dailyr_df = dailyresources.df
-# dailyr_df.to_pickle('dailyr.df')
+dailyresources =AWSCostParser(days=30, granularity="DAILY")
+dailyr_df = dailyresources.df
+dailyr_df.to_pickle('dailyr.df')
 dailyr_df = pd.read_pickle('dailyr.df')
 
-# annualresources =AWSCostParser(days=365, granularity="MONTHLY")
-# annualresources = annualresources.df
-# annualresources.to_pickle('byaccount.df')
+annualresources =AWSCostParser(days=365, granularity="MONTHLY")
+annualresources = annualresources.df
+annualresources.to_pickle('byaccount.df')
 account_df = pd.read_pickle('byaccount.df')
 
-
 key = 'source'
-# acpk = AWSCostParser(key=key, days=30, granularity="DAILY")
-# dfk = acpk.df
-# dfk.to_pickle('bysourcetag.df')
+acpk = AWSCostParser(key=key, days=30, granularity="DAILY")
+dfk = acpk.df
+dfk.to_pickle('bysourcetag.df')
 tag_df = pd.read_pickle('bysourcetag.df')
 
 colors = {
     'background': '#eee',
     'text': 'rgb(242, 158, 57)',
-    'amazon': 'rgb(242, 158, 57)',
     'graphtext': 'rgb(242, 158, 57)',
 }
 preffont = dict(
-    size=12,
+    size=10,
     color=colors['graphtext']
 )
 external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
@@ -65,7 +63,15 @@ data_mask = account_df['start'] >= f'{yestermonth.year}-{yestermonth.month}-01'
 print(account_df[data_mask].groupby(['account', 'start'], as_index=False)['amount'].sum().sort_values('amount', ascending=False).head())
 
 
-import sys; sys.exit(2)
+# Current MTD versus last month - Total cost per account
+data_mask = account_df['start'] >= f'{yestermonth.year}-{yestermonth.month}-01'
+month_compare = account_df[data_mask] \
+    .groupby(['account', 'start'], as_index=False)['amount'] \
+    .sum() \
+    .pivot(index='account', values='amount', columns='start')
+month_compare['diff'] = month_compare.iloc[:, 1] - month_compare.iloc[:, 0]
+month_compare.columns = ['Previous Month', 'Current Month', 'Difference'] 
+
 
 # Cost for AWS by account
 adf = account_df.groupby(['start', 'account'], as_index=False)['amount'].sum()
@@ -84,11 +90,9 @@ for account in adf['account'].unique():
 account_cost.update_layout(
     xaxis=dict(
         title='Month',
-        color=colors['graphtext']
     ),
     yaxis=dict(
         title='Amount (USD)',
-        color=colors['graphtext']
     ),
     paper_bgcolor='rgba(0,0,0,0)',
     plot_bgcolor='rgba(0,0,0,0)',
@@ -124,17 +128,19 @@ daily_resource_cost.update_layout(
 # Cost for AWS by resource [365 days, monthly]
 rdf = account_df.groupby(['start', 'resource'], as_index=False)['amount'].sum()
 resource_cost = go.Figure()
-for resource in rdf['resource'].unique():
+for index, resource in enumerate(rdf['resource'].unique()):
     rsel = rdf[rdf['resource'] == resource]
     visible = resource in ['AWS Glue', 'AWS Lambda', 'Amazon Simple Storage Service', 'Amazon Redshift']
     params = {
         'name': resource,
         'x': rsel['start'],
-        'y': rsel['amount']
+        'y': rsel['amount'],
+        'fill': 'tonexty' if index == 0 else 'tonexty',
+        'mode': 'lines'
     }
     if not visible:
         params['visible'] = 'legendonly'
-    resource_cost.add_trace(go.Line(**params))
+    resource_cost.add_trace(go.Scatter(**params))
 resource_cost.update_layout(
     paper_bgcolor='rgba(0,0,0,0)',
     plot_bgcolor='rgba(0,0,0,0)',
@@ -182,8 +188,7 @@ fig_merdf = go.Figure(data=[go.Bar(
     y=merdf['resource'],
     text=merdf['amount'],
     orientation='h',
-    textposition='auto',
-    marker_color=colors['amazon'],
+    textposition='auto'
 )])
 fig_merdf.update_layout(
     xaxis=dict(
@@ -199,7 +204,7 @@ fig_merdf.update_layout(
 )
 
 # Cost by source
-source_df = tag_df[(tag_df['start'] >= f'{today.year}-{today.month}-01') & (tag_df['source'] != "")].groupby(['source', 'resource', 'start'], as_index=False)['amount'].sum().sort_values('source', ascending=False)
+source_df = tag_df[(tag_df['start'] >= f'{today.year}-{today.month}-01') & (tag_df['source'] != "")].groupby(['source', 'resource'], as_index=False)['amount'].sum().sort_values('source', ascending=False)
 source_cost_fig = px.bar(source_df, x="amount", y="source", color="resource", orientation='h')
 source_cost_fig.update_layout(
     xaxis=dict(
@@ -211,7 +216,17 @@ source_cost_fig.update_layout(
     ),
     paper_bgcolor='rgba(0,0,0,0)',
     plot_bgcolor='rgba(0,0,0,0)',
-    font=preffont
+    font=preffont,
+    title={
+        'text': "Plot Title",
+        'font': {
+            'size': 20
+        },
+        'y':1,
+        'x':0.5,
+        'xanchor': 'center',
+        'yanchor': 'top'
+    }
 )
 
 app.layout = html.Div(children=[
@@ -266,7 +281,6 @@ app.layout = html.Div(children=[
             )
         ]),
         html.Div([
-            html.H3("Costs by source"),
             dcc.Graph(
                 id="source_cost_fig",
                 figure=source_cost_fig
@@ -274,7 +288,6 @@ app.layout = html.Div(children=[
             ]
         )
     ] , className="container-wide"),
-    # generate_table(df)
 ])
 
 if __name__ == '__main__':
