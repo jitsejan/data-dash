@@ -1,8 +1,10 @@
 # -*- coding: utf-8 -*-
 import datetime
 import dash
+import dash_table as dt
 import dash_core_components as dcc
 import dash_html_components as html
+import numpy as np
 import os
 import pandas as pd
 import plotly.express as px
@@ -17,20 +19,20 @@ if not os.environ.get('AWS_PROFILE'):
     sys.exit(2)
 
 
-dailyresources =AWSCostParser(days=30, granularity="DAILY")
-dailyr_df = dailyresources.df
-dailyr_df.to_pickle('dailyr.df')
+# dailyresources =AWSCostParser(days=60, granularity="DAILY")
+# dailyr_df = dailyresources.df
+# dailyr_df.to_pickle('dailyr.df')
 dailyr_df = pd.read_pickle('dailyr.df')
 
-annualresources =AWSCostParser(days=365, granularity="MONTHLY")
-annualresources = annualresources.df
-annualresources.to_pickle('byaccount.df')
+# annualresources =AWSCostParser(days=365, granularity="MONTHLY")
+# annualresources = annualresources.df
+# annualresources.to_pickle('byaccount.df')
 account_df = pd.read_pickle('byaccount.df')
 
 key = 'source'
-acpk = AWSCostParser(key=key, days=30, granularity="DAILY")
-dfk = acpk.df
-dfk.to_pickle('bysourcetag.df')
+# acpk = AWSCostParser(key=key, days=60, granularity="DAILY")
+# dfk = acpk.df
+# dfk.to_pickle('bysourcetag.df')
 tag_df = pd.read_pickle('bysourcetag.df')
 
 colors = dict(
@@ -57,21 +59,19 @@ today = datetime.datetime.utcnow().now()
 yesterday = today - datetime.timedelta(days=1)
 yestermonth = today - datetime.timedelta(days=31)
 
-data_mask = account_df['start'] >= f'{yestermonth.year}-{yestermonth.month}-01'
-print(account_df[data_mask].groupby(['account', 'start'], as_index=False)['amount'].sum().sort_values('amount', ascending=False).head())
-
 
 # Current MTD versus last month - Total cost per account
-data_mask = account_df['start'] >= f'{yestermonth.year}-{yestermonth.month}-01'
-month_compare = account_df[data_mask] \
-    .groupby(['account', 'start'], as_index=False)['amount'] \
+last60days = today - datetime.timedelta(days=60)
+data_mask = dailyr_df['start'] >= f'{last60days.year}-{last60days.month}-{last60days.day}'
+month_compare = dailyr_df[data_mask] \
+    .groupby(['account', pd.Grouper(key='start', freq='30d')])['amount'] \
     .sum() \
+    .reset_index() \
     .pivot(index='account', values='amount', columns='start')
 month_compare['diff'] = month_compare.iloc[:, 1] - month_compare.iloc[:, 0]
 month_compare.columns = ['Previous Month', 'Current Month', 'Difference']
-month_compare['Current Month'] = month_compare['Current Month'].apply('$ {:.2f}'.format)
-month_compare['Previous Month'] = month_compare['Previous Month'].apply('$ {:.2f}'.format)
-month_compare['Difference'] = month_compare['Difference'].apply('$ {:.2f}'.format)
+month_compare =  month_compare.append(month_compare.sum(numeric_only=True).rename('Total'))
+month_data = month_compare.to_dict(orient='index')
 month_compare.reset_index(inplace=True)
 
 # Cost for AWS by account
@@ -177,19 +177,16 @@ fig_ydf.update_layout(
     font=preffont
 )
 
-# Top 10 most expensive resources MTD
-data_mask = (account_df['start'] >= f'{today.year}-{today.month}-01') & (~account_df['resource'].isin(['Tax']))
-merdf = account_df[data_mask]\
-    .groupby(['resource', 'start'], as_index=False)\
-    .sum()\
-    .nlargest(10, 'amount')
-fig_merdf = go.Figure(data=[go.Bar(
-    x=merdf['amount'],
-    y=merdf['resource'],
-    text=merdf['amount'],
-    orientation='h',
-    textposition='auto'
-)])
+# Top 10 most expensive resources last 30 days vs. previous 30 days
+last60days = today - datetime.timedelta(days=60)
+ten_most_expensive = dailyr_df[dailyr_df['resource'] != 'Tax'].groupby('resource')['amount'].sum().sort_values().tail(10).index
+data_mask = (dailyr_df['start'] >= f'{last60days.year}-{last60days.month}-{last60days.day}') & (dailyr_df['resource'].isin(ten_most_expensive))
+rmonth_compare = dailyr_df[data_mask] \
+    .groupby(['resource', pd.Grouper(key='start', freq='30d')])['amount'] \
+    .sum() \
+    .reset_index().sort_values('amount', ascending=False)
+rmonth_compare['period'] = np.where(rmonth_compare.start == rmonth_compare.start.max(), 'Last 30 days', 'Previous 30 days')
+fig_merdf = px.bar(rmonth_compare, x="amount", y='resource', color='period', barmode='group', orientation='h')
 fig_merdf.update_layout(
     xaxis=dict(
         title='Amount (USD)',
@@ -230,24 +227,37 @@ source_cost_fig.update_layout(
     }
 )
 
+
 app.layout = html.Div(children=[
     html.Div([
         html.H1(children='AWS cost overview'),
         html.H2(children='Dashboard showing the data for the different accounts.')
     ] , className="header"),
     html.Div([
+        html.H3("Cost overview last 30 days vs. previous 30 days"),
+        dt.DataTable(columns=[{"name": i, "id": i, 'deletable': False} for i in month_compare.columns],
+                     data=month_compare.to_dict('records'),
+                     css=[{'selector': '.dash-cell div.dash-cell-value', 'rule': 'display: inline; white-space: inherit; overflow: inherit; text-overflow: inherit;'}],
+                     style_data_conditional=[{
+                        "if": {
+                            'column_id': 'Difference',
+                            'filter_query': '{Difference} > 0'
+                        },
+                        "backgroundColor": "red",
+                        "color": "white"
+                    },{
+                        "if": {
+                            'column_id': 'Difference',
+                            'filter_query': '{Difference} < 0'
+                        },
+                        "backgroundColor": "green",
+                        "color": "white"
+                    }],
+                    style_data={ 'border': '0px', 'backgroundColor': '#444'},
+                    style_header={ 'border': '0px', 'backgroundColor': '#444', 'fontWeight': 'bold'},
+        ),
         html.Div([
-            html.H3("Cost Data Accounts - MTD"),
-            html.Table(
-                [html.Tr([html.Th(col) for col in month_compare.columns])] +
-
-                [html.Tr([
-                    html.Td(month_compare.iloc[i][col]) for col in month_compare.columns
-                ]) for i in range(len(month_compare))]
-            )
-        ]),
-        html.Div([
-            html.H3("Top 10 - Most expensive resources - All accounts total - MTD"),
+            html.H3("Top 10 - Most expensive resources - All accounts total - Last 30 days vs. previous 30 days"),
             dcc.Graph(
                 id="fig_merdf",
                 figure=fig_merdf
