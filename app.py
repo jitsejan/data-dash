@@ -19,20 +19,20 @@ if not os.environ.get('AWS_PROFILE'):
     sys.exit(2)
 
 
-# dailyresources =AWSCostParser(days=60, granularity="DAILY")
-# dailyr_df = dailyresources.df
-# dailyr_df.to_pickle('dailyr.df')
+dailyresources =AWSCostParser(days=60, granularity="DAILY")
+dailyr_df = dailyresources.df
+dailyr_df.to_pickle('dailyr.df')
 dailyr_df = pd.read_pickle('dailyr.df')
 
-# annualresources =AWSCostParser(days=365, granularity="MONTHLY")
-# annualresources = annualresources.df
-# annualresources.to_pickle('byaccount.df')
+annualresources =AWSCostParser(days=365, granularity="MONTHLY")
+annualresources = annualresources.df
+annualresources.to_pickle('byaccount.df')
 account_df = pd.read_pickle('byaccount.df')
 
 key = 'source'
-# acpk = AWSCostParser(key=key, days=60, granularity="DAILY")
-# dfk = acpk.df
-# dfk.to_pickle('bysourcetag.df')
+acpk = AWSCostParser(key=key, days=60, granularity="DAILY")
+dfk = acpk.df
+dfk.to_pickle('bysourcetag.df')
 tag_df = pd.read_pickle('bysourcetag.df')
 
 colors = dict(
