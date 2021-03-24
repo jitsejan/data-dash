@@ -1,7 +1,7 @@
 """ __main__.py """
 from awscostparser import AWSCostParser
 
-acp = AWSCostParser('Name')
+acp = AWSCostParser("Name")
 print(acp.df.head())
 
 acp = AWSCostParser()
