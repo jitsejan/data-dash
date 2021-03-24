@@ -146,8 +146,8 @@ resource_cost.update_layout(
     font=preffont
 )
 
-# Root, Data Dev & Prod
-data_mask = (account_df['account'].isin(['Data Dev', 'Data Prod', 'Root'])) & (account_df['start'] >= f'{today.year}-{today.month}-01') & (account_df['amount'] > 1)
+active_accounts = ['Data Dev', 'Data Prod']
+data_mask = (account_df['account'].isin(active_accounts)) & (account_df['start'] >= f'{today.year}-{today.month}-01') & (account_df['amount'] > 1)
 data = account_df[data_mask]
 data_acc_fig = px.bar(data, x="resource", y="amount", color="account", barmode="group")
 data_acc_fig.update_layout(
@@ -201,7 +201,8 @@ fig_merdf.update_layout(
 )
 
 # Cost by source
-data_mask = (tag_df['start'] >= f'{today.year}-{today.month}-01') & (tag_df['source'] != "")
+# TODO: Ensure source is in the tags
+data_mask = (tag_df['start'] >= f'{today.year}-{today.month}-01')  # & (tag_df['source'] != "")
 source_df = tag_df[data_mask].groupby(['source', 'resource'], as_index=False)['amount'].sum().sort_values('source', ascending=False)
 source_cost_fig = px.bar(source_df, x="amount", y="source", color="resource", orientation='h')
 source_cost_fig.update_layout(

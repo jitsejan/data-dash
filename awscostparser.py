@@ -23,7 +23,7 @@ class AWSCostParser:
     
     def _get_dataframe(self):
         """ Get the dataframe """
-        df = pd.io.json.json_normalize(self._get_data())
+        df = pd.json_normalize(self._get_data())
         gdf = self._get_groups_dataframe(df)
         df = df\
             .join(gdf)\
@@ -47,7 +47,7 @@ class AWSCostParser:
             .to_frame("groups")\
             .reset_index()
 
-        gdf = gdf.join(pd.io.json.json_normalize(gdf['groups']))\
+        gdf = gdf.join(pd.json_normalize(gdf['groups']))\
             .drop(['groups', 'level_1'], axis=1)\
             .set_index('level_0')
 
