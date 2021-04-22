@@ -3,3 +3,4 @@
 *.ipynb
 *.json
 *pycache/
+__pycache__

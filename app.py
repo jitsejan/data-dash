@@ -31,7 +31,7 @@ annualresources = AWSCostParser(days=365, granularity="MONTHLY")
 annualresources = annualresources.df
 annualresources.to_pickle("byaccount.df")
 account_df = pd.read_pickle("byaccount.df")
-
+active_accounts = ["Data Dev", "Data Stage", "Data Prod"]
 key = "source"
 acpk = AWSCostParser(key=key, days=60, granularity="DAILY")
 dfk = acpk.df
@@ -85,7 +85,7 @@ adf = account_df.groupby(["start", "account"], as_index=False)["amount"].sum()
 account_cost = go.Figure()
 for account in adf["account"].unique():
     sel = adf[adf["account"] == account]
-    visible = account in ["Data Prod", "Data Dev"]
+    visible = account in active_accounts
     params = {"name": account, "x": sel["start"], "y": sel["amount"]}
     if not visible:
         params["visible"] = "legendonly"
@@ -146,7 +146,6 @@ resource_cost.update_layout(
     paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=preffont
 )
 
-active_accounts = ["Data Dev", "Data Prod"]
 data_mask = (
     (account_df["account"].isin(active_accounts))
     & (account_df["start"] >= f"{today.year}-{today.month}-01")
