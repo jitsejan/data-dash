@@ -4,14 +4,13 @@ import os
 import sys
 
 import dash
-import dash_core_components as dcc
-import dash_html_components as html
-import dash_table as dt
+from dash import dcc
+from dash import dash_table as dt
+from dash import html
 import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objs as go
-from plotly.subplots import make_subplots
 
 from awscostparser import AWSCostParser
 
@@ -74,9 +73,9 @@ month_compare = (
 )
 month_compare["diff"] = month_compare.iloc[:, 1] - month_compare.iloc[:, 0]
 month_compare.columns = ["Previous Month", "Current Month", "Difference"]
-month_compare = month_compare.append(
+month_compare = pd.concat([month_compare,
     month_compare.sum(numeric_only=True).rename("Total")
-)
+])
 month_data = month_compare.to_dict(orient="index")
 month_compare.reset_index(inplace=True)
 
@@ -115,7 +114,7 @@ for resource in drdf["resource"].unique():
     params = {"name": resource, "x": rsel["start"], "y": rsel["amount"]}
     if not visible:
         params["visible"] = "legendonly"
-    daily_resource_cost.add_trace(go.Line(**params))
+    daily_resource_cost.add_trace(go.Scatter(**params))
 ## Add total line
 total_df = dailyr_df.groupby(["start"], as_index=False)["amount"].sum()
 params = {
@@ -123,7 +122,7 @@ params = {
     "x": total_df["start"],
     "y": total_df["amount"],
 }
-daily_resource_cost.add_trace(go.Line(**params))
+daily_resource_cost.add_trace(go.Scatter(**params))
 daily_resource_cost.update_layout(
     paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=preffont
 )
