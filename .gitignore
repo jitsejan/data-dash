@@ -2,3 +2,4 @@
 *.df
 *.ipynb
 *.json
+__pycache__
